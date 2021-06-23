@@ -1,0 +1,13 @@
+{
+  "meta": {
+    "ruid": "asd=="
+  },
+  "warnings": [],
+  "errors": [
+    {
+      "message": "Access denied",
+      "code": "UNAUTHORIZED",
+      "details": "asd"
+    }
+  ]
+}
