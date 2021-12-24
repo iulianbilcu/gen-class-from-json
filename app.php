@@ -16,7 +16,7 @@ ksort($array);
 
 
 $className = 'BaseModel';
-$namespace = 'Kigo\Channels\Airbnb\Models\Availability\AvailabilityRules';
+$namespace = 'Some\Namespace';
 
 // ************** Parser ***************************************************
 
