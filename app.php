@@ -5,12 +5,10 @@ require 'vendor/autoload.php';
 use App\Parser;
 
 
-$array = json_decode(
-    file_get_contents(__DIR__ . '/data.json'),
-    true
-);
+$array = json_decode(file_get_contents(__DIR__ . '/data.json'), true, 512, JSON_THROW_ON_ERROR);
 
 ksort($array);
+
 
 // ************** Config ***************************************************
 

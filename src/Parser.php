@@ -10,21 +10,21 @@ use plejus\PhpPluralize\Inflector;
 class Parser
 {
 
-    public function process($className, $namespace, $array)
+    public function process($className, $namespace, $array): void
     {
         $this->cleanup();
 
-        list($class, $imports) = $this->getClass($array, $className, $namespace);
+        [$class, $imports] = $this->getClass($array, $className, $namespace);
 
-        $this->saveClass($className, $class, $namespace, $imports);
+        $this->saveClass($className, $class, $namespace, false);
     }
 
-    private function snakeToCamel($input)
+    private function snakeToCamel($input): string
     {
         return lcfirst(str_replace(' ', '', ucwords(str_replace('_', ' ', $input))));
     }
 
-    public function cleanup()
+    public function cleanup(): void
     {
         $files = glob(__DIR__ . '/../classes/*'); // get all file names
         var_dump($files);
@@ -33,9 +33,18 @@ class Parser
                 unlink($file); // delete file
             }
         }
+
+        // add recursivity here, doh
+        $files = glob(__DIR__ . '/../classes/SubModels*'); // get all file names
+        var_dump($files);
+        foreach ($files as $file) { // iterate files
+            if (is_file($file)) {
+                unlink($file); // delete file
+            }
+        }
     }
 
-    public function saveClass($className, $class, $namespace, $imports = [])
+    public function saveClass($className, $class, $namespace, $subModels = false): void
     {
         echo $className . PHP_EOL;
         $begin = '<?php ';
@@ -49,13 +58,19 @@ class Parser
         $importString .= 'use JMS\Serializer\Annotation as Serializer;' . PHP_EOL;
         $importString .= 'use JMS\Serializer\Annotation\AccessType;' . PHP_EOL;
 
+        $path = 'classes/' . ($subModels ? 'SubModels/' : '');
+        if (!is_dir($path)){
+            if (!mkdir($path) && !is_dir($path)) {
+                throw new \RuntimeException(sprintf('Directory "%s" was not created', $path));
+            }
+        }
         file_put_contents(
-            'classes/' . $className . '.php',
-            $begin . 'namespace ' . $namespace . ';' . PHP_EOL . $importString . PHP_EOL . PHP_EOL . $class
+            $path . $className . '.php',
+            $begin . 'namespace ' . $namespace . ($subModels ? '\SubModels' : '') . ';' . PHP_EOL . $importString . PHP_EOL . PHP_EOL . $class
         );
     }
 
-    private function isArrayOfArrays($array)
+    private function isArrayOfArrays($array): bool
     {
         foreach ($array as $child) {
             if (!(is_array($child))) {
@@ -65,7 +80,7 @@ class Parser
         return true;
     }
 
-    public function getClass($array, $name, $namespace)
+    public function getClass($array, $name, $namespace): array
     {
         $class = new ClassType($name);
 
@@ -75,28 +90,48 @@ class Parser
 
         try {
             foreach ($array as $property => $type) {
-                $type = gettype($type);
+                $type    = gettype($type);
+                $varType = $type;
 
-                if ($type == 'array') {
+                // fix type
+                switch ($type) {
+                    case 'boolean':
+                        $varType = 'bool';
+                        break;
+                    case 'integer':
+                        $varType = 'int';
+                        break;
+                    case 'double':
+                        $varType = 'float';
+                        break;
+                }
+                if ($type === 'boolean') {
+                    $varType = 'bool';
+                }
+
+
+                if ($type === 'array') {
                     $newClassName = (new Inflector())->singular(ucfirst($this->snakeToCamel($property)));
 
                     $imports[] = $newClassName;
 
                     if ($this->isArrayOfArrays($array[$property]) && isset($array[$property][0])) {
 //                    $typeComment = "@var array";
-                        list($newClass, $localImports) = $this->getClass(
+                        [$newClass, $localImports] = $this->getClass(
                             $array[$property][0],
                             $newClassName,
                             $namespace
                         );
-                        $type = $newClassName . "[]";
+                        $type    = $newClassName . "[]";
+                        $varType = 'array';
                     } else {
 //                    $typeComment = "@var {$namespace}\\{$newClassName}";
-                        list($newClass, $localImports) = $this->getClass($array[$property], $newClassName, $namespace);
-                        $type = $newClassName;
+                        [$newClass, $localImports] = $this->getClass($array[$property], $newClassName, $namespace);
+                        $type    = $newClassName;
+                        $varType = $newClassName;
                     }
 
-                    $this->saveClass($newClassName, $newClass, $namespace, $localImports);
+                    $this->saveClass($newClassName, $newClass, $namespace, true);
 
                     $serializerType = ($this->isArrayOfArrays($array[$property])) ?
                         '@Serializer\Type("array<' . $newClassName . '>")' :
@@ -104,35 +139,22 @@ class Parser
 
                     $prop = $class->addProperty($this->snakeToCamel($property))
                         ->setVisibility('private')
+                        ->setType($varType)
 //                    ->addComment($typeComment)
 //                    ->addComment('')
-                        ->addComment($serializerType);
+                        ->addComment(PHP_EOL . $serializerType . PHP_EOL);
                 } else {
                     $prop = $class->addProperty($this->snakeToCamel($property))
                         ->setVisibility('private')
+                        ->setType($varType)
 //                    ->addComment("@var {$type}")
 //                    ->addComment('')
-                        ->addComment('@Serializer\Type("' . $type . '")');
+                        ->addComment(PHP_EOL . '@Serializer\Type("' . $type . '")' . PHP_EOL);
                 }
-                if ($property != $this->snakeToCamel($property)) {
+                if ($property !== $this->snakeToCamel($property)) {
                     $prop->addComment('@Serializer\SerializedName("' . $property . '")');
                 }
 
-                // fix type
-                switch ($type) {
-                    case 'boolean':
-                        $type = 'bool';
-                        break;
-                    case 'integer':
-                        $type = 'int';
-                        break;
-                    case 'double':
-                        $type = 'float';
-                        break;
-                }
-                if ($type == 'boolean') {
-                    $type = 'bool';
-                }
 
                 // add getter
 
@@ -140,19 +162,19 @@ class Parser
 
                 $class->addMethod('get' . ucfirst($formattedProperty))
                     ->addComment('@return ' . $type)
-//                ->setReturnType($type) // method return type
+                    ->setReturnType($varType) // method return type
                     ->setBody('return $this->' . $formattedProperty . ';');
 
                 // add setter
                 $method = $class->addMethod('set' . ucfirst($formattedProperty))
                     ->addComment('@param ' . $type . ' $' . $formattedProperty)
                     ->addComment('@return ' . $name)
-//                ->setReturnType($type) // method return type
+                    ->setReturnType($name) // method return type
                     ->setBody(
                         '$this->' . $formattedProperty . ' = $' . $formattedProperty . ';' . PHP_EOL . 'return $this;'
                     );
 
-                $method->addParameter($formattedProperty);
+                $method->addParameter($formattedProperty)->setType($varType);
             }
         } catch (Exception $e) {
             echo "Error: " . $e->getMessage() . PHP_EOL;

@@ -6,7 +6,7 @@
     }
   ],
   "require": {
-    "nette/php-generator": "2.6.*",
+    "nette/php-generator": "3.6.*",
     "plejus/pluralize": "^1.0",
     "ext-json": "*"
   },
